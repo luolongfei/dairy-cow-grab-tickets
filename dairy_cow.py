@@ -117,22 +117,37 @@ class DairyCow(object):
     def __driver_wait(self, timeout=None):
         return WebDriverWait(self.driver, timeout=DairyCow.timeout if timeout is None else timeout, poll_frequency=0.5)
 
+    @staticmethod
+    def del_expiry(cookie):
+        """
+        在持久化时删除 cookies 中的过期时间，防止 cookies “过期”被浏览器自动删除
+        :param cookie:
+        :return:
+        """
+        if 'expiry' in cookie:
+            del cookie['expiry']
+
+        return cookie
+
     def __login(self, force=False):
         """
         登录大麦网
         :param force: 是否强制登录，强制登录将忽略已存在的 cookies 文件，走完整登录逻辑
         :return:
         """
+        self.driver.get(DairyCow.login_url)
+
         if not force and os.path.exists(self.cookies_file):
             print('发现已存在 cookies 文件，免登录')
             with open(self.cookies_file, 'rb') as f:
                 cookies = pickle.load(f)
+
+                # 因为 selenium 需要访问网页后方可设置 cookies，故把访问登录页的逻辑提前，方便从文件还原 cookies
+                # 参考：https://stackoverflow.com/questions/41559510/selenium-chromedriver-add-cookie-invalid-domain-error/44857193
                 for cookie in cookies:
                     self.driver.add_cookie(cookie)
 
                 return cookies
-
-        self.driver.get(DairyCow.login_url)
 
         login_frame = self.driver.find_element_by_id('alibaba-login-box')
         self.driver.switch_to.frame(login_frame)
@@ -151,8 +166,7 @@ class DairyCow(object):
         time.sleep(5)  # 跳转需要时间
 
         # cookies 持久化
-        t = self.driver.get_cookies()
-        cookies = [{'name': cookie['name'], 'value': cookie['value']} for cookie in self.driver.get_cookies()]
+        cookies = list(map(DairyCow.del_expiry, self.driver.get_cookies()))
         with open(self.cookies_file, 'wb') as f:  # b 参数声明以二进制模式，不用也不能指定编码
             pickle.dump(cookies, f)
 
